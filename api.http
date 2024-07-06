@@ -1,0 +1,13 @@
+
+GET http://localhost:26657/abci_info
+
+### 
+
+GET http://localhost:26657/status
+
+###
+GET http://localhost:26657/broadcast_tx_commit?tx="cometbft=rocks1"
+
+###
+
+GET http://localhost:26657/abci_query?data="cometbft1"
