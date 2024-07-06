@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log"
+	"strconv"
 
 	abcitypes "github.com/cometbft/cometbft/abci/types"
 	"github.com/dgraph-io/badger/v3"
@@ -57,6 +59,86 @@ func (app *KVStoreApplication) isValid(tx []byte) uint32 {
 	}
 
 	return 0
+}
+
+func (app *KVStoreApplication) deposit(account, amountStr string) error {
+
+	amount, err := strconv.Atoi(amountStr)
+
+	if err != nil {
+		return err
+	}
+
+	if amount < 0 {
+		return errors.New("amount must be positive")
+	}
+
+	var balance []byte
+
+	err = app.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(account))
+
+		if err != nil {
+			return err
+		}
+
+		return item.Value(func(val []byte) error {
+			balance = val
+			return nil
+		})
+	})
+
+	if err != nil {
+		return err
+	}
+
+	currentBalance, err := strconv.Atoi(string(balance))
+
+	if err != nil {
+		return err
+	}
+
+	currentBalance += amount
+
+	err = app.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte(account), []byte(strconv.Itoa(currentBalance)))
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (app *KVStoreApplication) withdraw(account, amountStr string) error {
+
+	amount, err := strconv.Atoi(amountStr)
+
+	if err != nil {
+		return err
+	}
+
+	if amount < 0 {
+		return errors.New("amount must be positive")
+	}
+
+	return nil
+}
+
+func (app *KVStoreApplication) transfer(from, to, amountStr string) error {
+
+	amount, err := strconv.Atoi(amountStr)
+
+	if err != nil {
+		return err
+	}
+
+	if amount < 0 {
+		return errors.New("amount must be positive")
+	}
+
+	return nil
 }
 
 func (app *KVStoreApplication) CheckTx(_ context.Context, check *abcitypes.RequestCheckTx) (*abcitypes.ResponseCheckTx, error) {
