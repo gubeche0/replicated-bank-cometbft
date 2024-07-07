@@ -36,6 +36,15 @@ GET http://localhost:26657/broadcast_tx_commit?tx="{\"id\":6, \"type\":\"deposit
 GET http://localhost:26657/broadcast_tx_commit?tx="{\"id\":5, \"type\":\"transfer\", \"from\":\"gustavo\", \"to\":\"jeniffer\", \"Amount\":100}"
 
 
-###
+### Get listAll
+GET http://localhost:26657/abci_query?data="{\"method\":\"listAll\"}"
 
-GET http://localhost:26657/abci_query?path="/teste/ta"&data="client_gustavo"
+### Get gustavo account
+GET http://localhost:26657/abci_query?data="{\"method\":\"getByName\", \"value\":\"gustavo\"}"
+
+### Get jeniffer account
+GET http://localhost:26657/abci_query?data="{\"method\":\"getByName\", \"value\":\"jeniffer\"}"
+
+### Get account that does not exist
+
+GET http://localhost:26657/abci_query?data="{\"method\":\"getByName\", \"value\":\"Pedro\"}"

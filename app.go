@@ -15,6 +15,7 @@ type BankApplication struct {
 	// abcitypes.BaseApplication
 	db           *badger.DB
 	onGoingBlock *badger.Txn
+	height       int64
 }
 
 var _ abcitypes.Application = (*BankApplication)(nil)
@@ -28,29 +29,62 @@ func (app *BankApplication) Info(_ context.Context, info *abcitypes.RequestInfo)
 }
 
 func (app *BankApplication) Query(_ context.Context, req *abcitypes.RequestQuery) (*abcitypes.ResponseQuery, error) {
-	resp := abcitypes.ResponseQuery{Key: req.Data}
+	resp := abcitypes.ResponseQuery{Key: req.Data, Height: app.height}
 
 	log.Printf("Querying ABCI data: %v", req.Data)
 
-	dbErr := app.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(req.Data)
+	var query model.QueryTx
+	if err := json.Unmarshal(req.Data, &query); err != nil {
+		resp.Log = fmt.Sprintf("Failed to unmarshal: %v", err)
+		resp.Code = 1
+		return &resp, nil
+	}
+
+	if err := query.Validate(); err != nil {
+		resp.Log = fmt.Sprintf("Failed to validate query: %v", err)
+		resp.Code = 1
+		return &resp, nil
+	}
+
+	if query.Method == "listAll" {
+		clients, err := model.ListClients(app.db)
 		if err != nil {
-			if err != badger.ErrKeyNotFound {
-				return err
-			}
-			resp.Log = "key does not exist"
-			return nil
+			fmt.Printf("Error reading database, unable to execute query: %v", err)
+			return nil, err
 		}
 
-		return item.Value(func(val []byte) error {
-			resp.Log = "exists"
-			resp.Value = val
-			return nil
-		})
-	})
-	if dbErr != nil {
-		log.Panicf("Error reading database, unable to execute query: %v", dbErr)
+		resp.Log = "listAll"
+		resp.Value, err = json.Marshal(clients)
+		if err != nil {
+			fmt.Printf("Error marshaling clients: %v", err)
+			return nil, err
+		}
+
+	} else if query.Method == "getByName" {
+		resp.Log = "getByName"
+		tx := app.db.NewTransaction(false)
+		defer tx.Discard()
+
+		client, err := model.FindUserByName(tx, query.Value)
+
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				resp.Log = "client does not exist"
+				resp.Code = 1
+				return &resp, nil
+			}
+			fmt.Printf("Error reading database, unable to execute query: %v", err)
+			return nil, err
+		}
+
+		resp.Value, err = json.Marshal(client)
+		if err != nil {
+			fmt.Printf("Error marshaling client: %v", err)
+			return nil, err
+		}
+		resp.Info = fmt.Sprintf("Client: %s, Balance: %d", client.Name, client.Balance)
 	}
+
 	return &resp, nil
 }
 
@@ -69,7 +103,10 @@ func (app *BankApplication) CheckTx(_ context.Context, check *abcitypes.RequestC
 		return &abcitypes.ResponseCheckTx{Code: 1, Log: fmt.Sprintf("Failed to validate transaction: %v", err)}, nil
 	}
 
-	return &abcitypes.ResponseCheckTx{Code: 0}, nil
+	return &abcitypes.ResponseCheckTx{
+		Code: 0,
+		Log:  fmt.Sprintf("Transaction %s validated successfully", transaction.Type),
+	}, nil
 }
 
 func (app *BankApplication) InitChain(_ context.Context, chain *abcitypes.RequestInitChain) (*abcitypes.ResponseInitChain, error) {
@@ -112,10 +149,14 @@ func (app *BankApplication) FinalizeBlock(_ context.Context, req *abcitypes.Requ
 				log.Panicf("Error writing to database, unable to execute tx: %v", err)
 			}
 
-			txs[i] = &abcitypes.ExecTxResult{}
+			txs[i] = &abcitypes.ExecTxResult{
+				Code: 0,
+				Log:  fmt.Sprintf("Transaction %s applied successfully", transaction.Type),
+			}
 		}
 	}
 
+	app.height = req.Height
 	return &abcitypes.ResponseFinalizeBlock{
 		TxResults: txs,
 	}, nil
