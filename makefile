@@ -11,4 +11,12 @@ init: clean
 
 all: clean init run
 
+docker-init:
+	rm -rf .docker/config
+	go run github.com/cometbft/cometbft/cmd/cometbft@v0.38.8 testnet --config .docker/config-template.toml --o .docker/config/ --starting-ip-address 192.167.10.2
+
+docker-build:
+	GOOS=linux GOARCH=amd64 go build -mod=mod
+	docker build --tag cometbft/bankaccount .
+
 .PHONY: run clean init

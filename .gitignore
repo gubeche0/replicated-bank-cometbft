@@ -1,2 +1,4 @@
 cometbft-home/
 bank-account
+
+.docker/config
