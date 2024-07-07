@@ -5,9 +5,37 @@ GET http://localhost:26657/abci_info
 
 GET http://localhost:26657/status
 
-###
-GET http://localhost:26657/broadcast_tx_commit?tx="cometbft=rocks1"
+### Create a deposit with 0 balance
+GET http://localhost:26657/broadcast_tx_commit?tx="{\"id\":1, \"type\":\"deposit\", \"from\":\"gustavo\", \"Amount\":0}"
+
+
+### Deposit 1000 
+
+GET http://localhost:26657/broadcast_tx_commit?tx="{\"id\":2, \"type\":\"deposit\", \"from\":\"gustavo\", \"Amount\":1000}"
+
+### Withdraw 200
+
+GET http://localhost:26657/broadcast_tx_commit?tx="{\"id\":3, \"type\":\"withdraw\", \"from\":\"gustavo\", \"Amount\":200}"
+
+
+### Try to withdraw 1000. It will fail because the balance is 800
+
+GET http://localhost:26657/broadcast_tx_commit?tx="{\"id\":4, \"type\":\"withdraw\", \"from\":\"gustavo\", \"Amount\":1000}"
+
+### Try transfer 100 to jeniffer account. It will fail because the jeniffer account does not exist
+
+GET http://localhost:26657/broadcast_tx_commit?tx="{\"id\":5, \"type\":\"transfer\", \"from\":\"gustavo\", \"to\":\"jeniffer\", \"Amount\":100}"
+
+### Create a jeniffer account with 50 balance
+
+GET http://localhost:26657/broadcast_tx_commit?tx="{\"id\":6, \"type\":\"deposit\", \"from\":\"jeniffer\", \"Amount\":50}"
+
+
+### Transfer 100 to jeniffer account. It will now work because the jeniffer account exists
+
+GET http://localhost:26657/broadcast_tx_commit?tx="{\"id\":5, \"type\":\"transfer\", \"from\":\"gustavo\", \"to\":\"jeniffer\", \"Amount\":100}"
+
 
 ###
 
-GET http://localhost:26657/abci_query?data="cometbft1"
+GET http://localhost:26657/abci_query?path="/teste/ta"&data="client_gustavo"

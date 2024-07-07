@@ -1,9 +1,11 @@
 package main
 
 import (
-	"bytes"
+	"bank-account/model"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strconv"
 
@@ -11,23 +13,26 @@ import (
 	"github.com/dgraph-io/badger/v3"
 )
 
-type KVStoreApplication struct {
+type BankApplication struct {
+	// abcitypes.BaseApplication
 	db           *badger.DB
 	onGoingBlock *badger.Txn
 }
 
-var _ abcitypes.Application = (*KVStoreApplication)(nil)
+var _ abcitypes.Application = (*BankApplication)(nil)
 
-func NewKVStoreApplication(db *badger.DB) *KVStoreApplication {
-	return &KVStoreApplication{db: db}
+func NewBankApplication(db *badger.DB) *BankApplication {
+	return &BankApplication{db: db}
 }
 
-func (app *KVStoreApplication) Info(_ context.Context, info *abcitypes.RequestInfo) (*abcitypes.ResponseInfo, error) {
+func (app *BankApplication) Info(_ context.Context, info *abcitypes.RequestInfo) (*abcitypes.ResponseInfo, error) {
 	return &abcitypes.ResponseInfo{}, nil
 }
 
-func (app *KVStoreApplication) Query(_ context.Context, req *abcitypes.RequestQuery) (*abcitypes.ResponseQuery, error) {
+func (app *BankApplication) Query(_ context.Context, req *abcitypes.RequestQuery) (*abcitypes.ResponseQuery, error) {
 	resp := abcitypes.ResponseQuery{Key: req.Data}
+
+	log.Printf("Querying ABCI data: %v", req.Data)
 
 	dbErr := app.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(req.Data)
@@ -51,17 +56,7 @@ func (app *KVStoreApplication) Query(_ context.Context, req *abcitypes.RequestQu
 	return &resp, nil
 }
 
-func (app *KVStoreApplication) isValid(tx []byte) uint32 {
-	// check format
-	parts := bytes.Split(tx, []byte("="))
-	if len(parts) != 2 {
-		return 1
-	}
-
-	return 0
-}
-
-func (app *KVStoreApplication) deposit(account, amountStr string) error {
+func (app *BankApplication) deposit(account, amountStr string) error {
 
 	amount, err := strconv.Atoi(amountStr)
 
@@ -111,7 +106,7 @@ func (app *KVStoreApplication) deposit(account, amountStr string) error {
 	return nil
 }
 
-func (app *KVStoreApplication) withdraw(account, amountStr string) error {
+func (app *BankApplication) withdraw(account, amountStr string) error {
 
 	amount, err := strconv.Atoi(amountStr)
 
@@ -126,7 +121,7 @@ func (app *KVStoreApplication) withdraw(account, amountStr string) error {
 	return nil
 }
 
-func (app *KVStoreApplication) transfer(from, to, amountStr string) error {
+func (app *BankApplication) transfer(from, to, amountStr string) error {
 
 	amount, err := strconv.Atoi(amountStr)
 
@@ -141,43 +136,88 @@ func (app *KVStoreApplication) transfer(from, to, amountStr string) error {
 	return nil
 }
 
-func (app *KVStoreApplication) CheckTx(_ context.Context, check *abcitypes.RequestCheckTx) (*abcitypes.ResponseCheckTx, error) {
-	code := app.isValid(check.Tx) // 0 is valid, everything else is invalid
-	return &abcitypes.ResponseCheckTx{Code: code}, nil
+func (app *BankApplication) CheckTx(_ context.Context, check *abcitypes.RequestCheckTx) (*abcitypes.ResponseCheckTx, error) {
+	var transaction model.Transaction
+
+	if err := json.Unmarshal(check.Tx, &transaction); err != nil {
+		fmt.Printf("failed to parse transaction message req: %v\n", err)
+
+		return &abcitypes.ResponseCheckTx{Code: 1, Log: fmt.Sprintf("Failed to unmarshal: %v", err)}, nil
+	}
+
+	if err := transaction.ValidateBasic(); err != nil {
+		fmt.Printf("failed to validate transaction: %v\n", err)
+
+		return &abcitypes.ResponseCheckTx{Code: 1, Log: fmt.Sprintf("Failed to validate transaction: %v", err)}, nil
+	}
+
+	return &abcitypes.ResponseCheckTx{Code: 0}, nil
 }
 
-func (app *KVStoreApplication) InitChain(_ context.Context, chain *abcitypes.RequestInitChain) (*abcitypes.ResponseInitChain, error) {
+func (app *BankApplication) InitChain(_ context.Context, chain *abcitypes.RequestInitChain) (*abcitypes.ResponseInitChain, error) {
 	return &abcitypes.ResponseInitChain{}, nil
 }
 
-func (app *KVStoreApplication) PrepareProposal(_ context.Context, proposal *abcitypes.RequestPrepareProposal) (*abcitypes.ResponsePrepareProposal, error) {
+func (app *BankApplication) PrepareProposal(_ context.Context, proposal *abcitypes.RequestPrepareProposal) (*abcitypes.ResponsePrepareProposal, error) {
 	return &abcitypes.ResponsePrepareProposal{Txs: proposal.Txs}, nil
 }
 
-func (app *KVStoreApplication) ProcessProposal(_ context.Context, proposal *abcitypes.RequestProcessProposal) (*abcitypes.ResponseProcessProposal, error) {
+func (app *BankApplication) ProcessProposal(_ context.Context, proposal *abcitypes.RequestProcessProposal) (*abcitypes.ResponseProcessProposal, error) {
 	return &abcitypes.ResponseProcessProposal{Status: abcitypes.ResponseProcessProposal_ACCEPT}, nil
 }
 
 // FinalizeBlock Deliver the decided block to the Application. The block is guaranteed to be stable and won't change anymore.
 // Note: FinalizeBlock only prepares the update to be made and does not change the state of the application. The state change is actually committed in a later stage i.e. in commit phase.
-func (app *KVStoreApplication) FinalizeBlock(_ context.Context, req *abcitypes.RequestFinalizeBlock) (*abcitypes.ResponseFinalizeBlock, error) {
+func (app *BankApplication) FinalizeBlock(_ context.Context, req *abcitypes.RequestFinalizeBlock) (*abcitypes.ResponseFinalizeBlock, error) {
+	// var txs = make([]*abcitypes.ExecTxResult, len(req.Txs))
+
+	// app.onGoingBlock = app.db.NewTransaction(true)
+	// for i, tx := range req.Txs {
+	// 	if code := app.isValid(tx); code != 0 {
+	// 		log.Printf("Error: invalid transaction index %v", i)
+	// 		txs[i] = &abcitypes.ExecTxResult{Code: code}
+	// 	} else {
+	// 		parts := bytes.SplitN(tx, []byte("="), 2)
+	// 		key, value := parts[0], parts[1]
+	// 		log.Printf("Adding key %s with value %s", key, value)
+
+	// 		if err := app.onGoingBlock.Set(key, value); err != nil {
+	// 			log.Panicf("Error writing to database, unable to execute tx: %v", err)
+	// 		}
+
+	// 		log.Printf("Successfully added key %s with value %s", key, value)
+
+	// 		txs[i] = &abcitypes.ExecTxResult{}
+	// 	}
+	// }
+
+	// return &abcitypes.ResponseFinalizeBlock{
+	// 	TxResults: txs,
+	// }, nil
+	fmt.Println("Executing Application FinalizeBlock")
+
 	var txs = make([]*abcitypes.ExecTxResult, len(req.Txs))
 
 	app.onGoingBlock = app.db.NewTransaction(true)
 	for i, tx := range req.Txs {
-		if code := app.isValid(tx); code != 0 {
-			log.Printf("Error: invalid transaction index %v", i)
-			txs[i] = &abcitypes.ExecTxResult{Code: code}
-		} else {
-			parts := bytes.SplitN(tx, []byte("="), 2)
-			key, value := parts[0], parts[1]
-			log.Printf("Adding key %s with value %s", key, value)
+		var transaction model.Transaction
 
-			if err := app.onGoingBlock.Set(key, value); err != nil {
+		if err := json.Unmarshal(tx, &transaction); err != nil {
+			fmt.Printf("failed to parse transaction message req: %v\n", err)
+
+			txs[i] = &abcitypes.ExecTxResult{Code: 1}
+			continue
+		}
+
+		if err := transaction.Validate(app.onGoingBlock); err != nil {
+			log.Printf("Error: invalid transaction index %v", i)
+			txs[i] = &abcitypes.ExecTxResult{Code: 2, Log: fmt.Sprintf("Failed to validate transaction: %v", err)}
+		} else {
+			if err := transaction.Apply(app.onGoingBlock); err != nil {
+				// Panic caso ocorra algum erro na escrita na aplicação. Não é possível tratar de forma determinística.
+				// Quando o node se recuperar ele irá tentar novamente. Se o erro for transiente, o node irá se recuperar.
 				log.Panicf("Error writing to database, unable to execute tx: %v", err)
 			}
-
-			log.Printf("Successfully added key %s with value %s", key, value)
 
 			txs[i] = &abcitypes.ExecTxResult{}
 		}
@@ -188,30 +228,31 @@ func (app *KVStoreApplication) FinalizeBlock(_ context.Context, req *abcitypes.R
 	}, nil
 }
 
-func (app KVStoreApplication) Commit(_ context.Context, commit *abcitypes.RequestCommit) (*abcitypes.ResponseCommit, error) {
+func (app BankApplication) Commit(_ context.Context, commit *abcitypes.RequestCommit) (*abcitypes.ResponseCommit, error) {
 	return &abcitypes.ResponseCommit{}, app.onGoingBlock.Commit()
+	// return &abcitypes.ResponseCommit{}, nil
 }
 
-func (app *KVStoreApplication) ListSnapshots(_ context.Context, snapshots *abcitypes.RequestListSnapshots) (*abcitypes.ResponseListSnapshots, error) {
+func (app *BankApplication) ListSnapshots(_ context.Context, snapshots *abcitypes.RequestListSnapshots) (*abcitypes.ResponseListSnapshots, error) {
 	return &abcitypes.ResponseListSnapshots{}, nil
 }
 
-func (app *KVStoreApplication) OfferSnapshot(_ context.Context, snapshot *abcitypes.RequestOfferSnapshot) (*abcitypes.ResponseOfferSnapshot, error) {
+func (app *BankApplication) OfferSnapshot(_ context.Context, snapshot *abcitypes.RequestOfferSnapshot) (*abcitypes.ResponseOfferSnapshot, error) {
 	return &abcitypes.ResponseOfferSnapshot{}, nil
 }
 
-func (app *KVStoreApplication) LoadSnapshotChunk(_ context.Context, chunk *abcitypes.RequestLoadSnapshotChunk) (*abcitypes.ResponseLoadSnapshotChunk, error) {
+func (app *BankApplication) LoadSnapshotChunk(_ context.Context, chunk *abcitypes.RequestLoadSnapshotChunk) (*abcitypes.ResponseLoadSnapshotChunk, error) {
 	return &abcitypes.ResponseLoadSnapshotChunk{}, nil
 }
 
-func (app *KVStoreApplication) ApplySnapshotChunk(_ context.Context, chunk *abcitypes.RequestApplySnapshotChunk) (*abcitypes.ResponseApplySnapshotChunk, error) {
+func (app *BankApplication) ApplySnapshotChunk(_ context.Context, chunk *abcitypes.RequestApplySnapshotChunk) (*abcitypes.ResponseApplySnapshotChunk, error) {
 	return &abcitypes.ResponseApplySnapshotChunk{Result: abcitypes.ResponseApplySnapshotChunk_ACCEPT}, nil
 }
 
-func (app KVStoreApplication) ExtendVote(_ context.Context, extend *abcitypes.RequestExtendVote) (*abcitypes.ResponseExtendVote, error) {
+func (app BankApplication) ExtendVote(_ context.Context, extend *abcitypes.RequestExtendVote) (*abcitypes.ResponseExtendVote, error) {
 	return &abcitypes.ResponseExtendVote{}, nil
 }
 
-func (app *KVStoreApplication) VerifyVoteExtension(_ context.Context, verify *abcitypes.RequestVerifyVoteExtension) (*abcitypes.ResponseVerifyVoteExtension, error) {
+func (app *BankApplication) VerifyVoteExtension(_ context.Context, verify *abcitypes.RequestVerifyVoteExtension) (*abcitypes.ResponseVerifyVoteExtension, error) {
 	return &abcitypes.ResponseVerifyVoteExtension{}, nil
 }

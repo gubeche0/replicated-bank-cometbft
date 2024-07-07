@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -44,12 +43,13 @@ func main() {
 	if err := viper.Unmarshal(config); err != nil {
 		log.Fatalf("Decoding config: %v", err)
 	}
+
 	config.Consensus.CreateEmptyBlocksInterval = 10 * time.Second
 	if err := config.ValidateBasic(); err != nil {
 		log.Fatalf("Invalid configuration data: %v", err)
 	}
-	dbPath := filepath.Join(homeDir, "badger")
-	db, err := badger.Open(badger.DefaultOptions(dbPath))
+	// dbPath := filepath.Join(homeDir, "badger")
+	db, err := badger.Open(badger.DefaultOptions("").WithInMemory(true))
 
 	if err != nil {
 		log.Fatalf("Opening database: %v", err)
@@ -60,7 +60,7 @@ func main() {
 		}
 	}()
 
-	app := NewKVStoreApplication(db)
+	app := NewBankApplication(db)
 
 	pv := privval.LoadFilePV(
 		config.PrivValidatorKeyFile(),

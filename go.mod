@@ -5,6 +5,7 @@ go 1.22.1
 require (
 	github.com/cometbft/cometbft v0.38.8
 	github.com/dgraph-io/badger/v3 v3.2103.5
+	github.com/rs/zerolog v1.29.0
 	github.com/spf13/viper v1.18.1
 )
 
@@ -42,6 +43,8 @@ require (
 	github.com/lib/pq v1.10.7 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/minio/highwayhash v1.0.2 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
