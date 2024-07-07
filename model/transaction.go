@@ -13,7 +13,7 @@ type Transaction struct {
 	ID     int64  `json:"id" badgerhold:"index"`
 	Type   string `json:"type"`
 	From   string `json:"from" badgerhold:"index"`
-	To     string `json:"to" badgerhold:"index"`
+	To     string `json:"to,omitempty" badgerhold:"index"`
 	Amount int64  `json:"amount"`
 }
 

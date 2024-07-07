@@ -4,10 +4,8 @@ import (
 	"bank-account/model"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
-	"strconv"
 
 	abcitypes "github.com/cometbft/cometbft/abci/types"
 	"github.com/dgraph-io/badger/v3"
@@ -56,86 +54,6 @@ func (app *BankApplication) Query(_ context.Context, req *abcitypes.RequestQuery
 	return &resp, nil
 }
 
-func (app *BankApplication) deposit(account, amountStr string) error {
-
-	amount, err := strconv.Atoi(amountStr)
-
-	if err != nil {
-		return err
-	}
-
-	if amount < 0 {
-		return errors.New("amount must be positive")
-	}
-
-	var balance []byte
-
-	err = app.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(account))
-
-		if err != nil {
-			return err
-		}
-
-		return item.Value(func(val []byte) error {
-			balance = val
-			return nil
-		})
-	})
-
-	if err != nil {
-		return err
-	}
-
-	currentBalance, err := strconv.Atoi(string(balance))
-
-	if err != nil {
-		return err
-	}
-
-	currentBalance += amount
-
-	err = app.db.Update(func(txn *badger.Txn) error {
-		return txn.Set([]byte(account), []byte(strconv.Itoa(currentBalance)))
-	})
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (app *BankApplication) withdraw(account, amountStr string) error {
-
-	amount, err := strconv.Atoi(amountStr)
-
-	if err != nil {
-		return err
-	}
-
-	if amount < 0 {
-		return errors.New("amount must be positive")
-	}
-
-	return nil
-}
-
-func (app *BankApplication) transfer(from, to, amountStr string) error {
-
-	amount, err := strconv.Atoi(amountStr)
-
-	if err != nil {
-		return err
-	}
-
-	if amount < 0 {
-		return errors.New("amount must be positive")
-	}
-
-	return nil
-}
-
 func (app *BankApplication) CheckTx(_ context.Context, check *abcitypes.RequestCheckTx) (*abcitypes.ResponseCheckTx, error) {
 	var transaction model.Transaction
 
@@ -169,31 +87,6 @@ func (app *BankApplication) ProcessProposal(_ context.Context, proposal *abcityp
 // FinalizeBlock Deliver the decided block to the Application. The block is guaranteed to be stable and won't change anymore.
 // Note: FinalizeBlock only prepares the update to be made and does not change the state of the application. The state change is actually committed in a later stage i.e. in commit phase.
 func (app *BankApplication) FinalizeBlock(_ context.Context, req *abcitypes.RequestFinalizeBlock) (*abcitypes.ResponseFinalizeBlock, error) {
-	// var txs = make([]*abcitypes.ExecTxResult, len(req.Txs))
-
-	// app.onGoingBlock = app.db.NewTransaction(true)
-	// for i, tx := range req.Txs {
-	// 	if code := app.isValid(tx); code != 0 {
-	// 		log.Printf("Error: invalid transaction index %v", i)
-	// 		txs[i] = &abcitypes.ExecTxResult{Code: code}
-	// 	} else {
-	// 		parts := bytes.SplitN(tx, []byte("="), 2)
-	// 		key, value := parts[0], parts[1]
-	// 		log.Printf("Adding key %s with value %s", key, value)
-
-	// 		if err := app.onGoingBlock.Set(key, value); err != nil {
-	// 			log.Panicf("Error writing to database, unable to execute tx: %v", err)
-	// 		}
-
-	// 		log.Printf("Successfully added key %s with value %s", key, value)
-
-	// 		txs[i] = &abcitypes.ExecTxResult{}
-	// 	}
-	// }
-
-	// return &abcitypes.ResponseFinalizeBlock{
-	// 	TxResults: txs,
-	// }, nil
 	fmt.Println("Executing Application FinalizeBlock")
 
 	var txs = make([]*abcitypes.ExecTxResult, len(req.Txs))
@@ -205,7 +98,7 @@ func (app *BankApplication) FinalizeBlock(_ context.Context, req *abcitypes.Requ
 		if err := json.Unmarshal(tx, &transaction); err != nil {
 			fmt.Printf("failed to parse transaction message req: %v\n", err)
 
-			txs[i] = &abcitypes.ExecTxResult{Code: 1}
+			txs[i] = &abcitypes.ExecTxResult{Code: 1, Log: fmt.Sprintf("Failed to unmarshal: %v", err)}
 			continue
 		}
 
