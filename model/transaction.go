@@ -144,5 +144,66 @@ func (txn *Transaction) Apply(dbTx *badger.Txn) error {
 		}
 	}
 
+	if txn.From != "" {
+		if err := appendToHistory(dbTx, txn.From, *txn); err != nil {
+			return err
+		}
+	}
+	if txn.To != "" {
+		if err := appendToHistory(dbTx, txn.To, *txn); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func findAllTransactions(dbTx *badger.Txn, name string) ([]Transaction, error) {
+	item, err := dbTx.Get([]byte(fmt.Sprintf("transaction_%s", name)))
+	if err != nil {
+		return nil, err
+	}
+
+	var transactions []Transaction
+	err = item.Value(func(val []byte) error {
+		return json.Unmarshal(val, &transactions)
+	})
+
+	if err != nil {
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return transactions, nil
+}
+
+func appendToHistory(dbTx *badger.Txn, name string, transaction Transaction) error {
+	item, err := dbTx.Get([]byte(fmt.Sprintf("transaction_%s", name)))
+	if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+		return err
+	}
+	var transactions []Transaction
+	if item != nil {
+		err = item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &transactions)
+		})
+
+		if err != nil {
+			return err
+		}
+
+	} else {
+		transactions = make([]Transaction, 0)
+	}
+
+	transactions = append(transactions, transaction)
+	transactionsB, err := json.Marshal(transactions)
+	if err != nil {
+		return err
+	}
+
+	err = dbTx.Set([]byte(fmt.Sprintf("transaction_%s", name)), transactionsB)
+	return err
 }

@@ -8,8 +8,9 @@ import (
 )
 
 type Client struct {
-	Name    string `json:"name" badgerhold:"index"`
-	Balance int64  `json:"balance"`
+	Name         string        `json:"name" badgerhold:"index"`
+	Balance      int64         `json:"balance"`
+	Transactions []Transaction `json:"transactions,omitempty"`
 }
 
 func getKeyName(name string) []byte {
@@ -52,4 +53,20 @@ func FindUserByName(txn *badger.Txn, name string) (*Client, error) {
 		return json.Unmarshal(val, &client)
 	})
 	return client, err
+}
+
+func FindUserByNameWithTransactions(txn *badger.Txn, name string) (*Client, error) {
+	client, err := FindUserByName(txn, name)
+	if err != nil {
+		return nil, err
+	}
+
+	transactions, err := findAllTransactions(txn, name)
+	if err != nil {
+		return nil, err
+	}
+
+	client.Transactions = transactions
+
+	return client, nil
 }

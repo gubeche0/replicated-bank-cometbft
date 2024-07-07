@@ -65,7 +65,7 @@ func (app *BankApplication) Query(_ context.Context, req *abcitypes.RequestQuery
 		tx := app.db.NewTransaction(false)
 		defer tx.Discard()
 
-		client, err := model.FindUserByName(tx, query.Value)
+		client, err := model.FindUserByNameWithTransactions(tx, query.Value)
 
 		if err != nil {
 			if err == badger.ErrKeyNotFound {
